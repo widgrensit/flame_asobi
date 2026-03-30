@@ -16,10 +16,7 @@ dependencies:
   flutter:
     sdk: flutter
   flame: ">=1.18.0 <2.0.0"
-  asobi:
-    git:
-      url: https://github.com/widgrensit/asobi-dart.git
-      ref: main
+  asobi: ^0.1.0
 
 dev_dependencies:
   flutter_test:
