@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:asobi/asobi.dart';
 import 'package:flame/components.dart';
 
@@ -7,21 +6,31 @@ import 'asobi_player.dart';
 import 'asobi_projectile.dart';
 
 /// Callback for building a player component from server data.
-typedef PlayerBuilder = AsobiPlayer Function(String playerId, bool isLocal);
+///
+/// Must return a [PositionComponent] with the [AsobiPlayer] mixin applied.
+typedef PlayerBuilder = PositionComponent Function(String playerId, bool isLocal);
 
 /// Callback for building a projectile component from server data.
-typedef ProjectileBuilder = AsobiProjectile Function(int id, String owner, bool isLocal);
+///
+/// Must return a [PositionComponent] with the [AsobiProjectile] mixin applied.
+typedef ProjectileBuilder = PositionComponent Function(int id, String owner, bool isLocal);
 
 /// Synchronizes server match state with Flame components.
 ///
-/// Automatically creates, updates, and removes [AsobiPlayer] and
-/// [AsobiProjectile] children based on the match state received
-/// from the server via WebSocket.
+/// Automatically creates, updates, and removes player and projectile
+/// children based on the match state received from the server via WebSocket.
+///
+/// Provide custom [playerBuilder] and [projectileBuilder] callbacks to
+/// use your own components with the [AsobiPlayer] and [AsobiProjectile] mixins.
 ///
 /// ```dart
 /// add(AsobiNetworkSync(
 ///   client: asobi,
 ///   pixelsPerUnit: 50,
+///   playerBuilder: (id, isLocal) {
+///     final p = MyPlayerSprite()..initPlayer(id: id, local: isLocal);
+///     return p;
+///   },
 ///   onStateUpdate: (state) => updateHud(state),
 ///   onMatchFinished: (result) => showResults(result),
 /// ));
@@ -34,8 +43,8 @@ class AsobiNetworkSync extends Component {
   final void Function(Map<String, dynamic> state)? onStateUpdate;
   final void Function(Map<String, dynamic> result)? onMatchFinished;
 
-  final Map<String, AsobiPlayer> _players = {};
-  final Map<int, AsobiProjectile> _projectiles = {};
+  final Map<String, PositionComponent> _players = {};
+  final Map<int, PositionComponent> _projectiles = {};
   Map<String, dynamic> _latestState = {};
   String _myId = '';
 
@@ -85,10 +94,10 @@ class AsobiNetworkSync extends Component {
   Map<String, dynamic> get latestState => _latestState;
 
   /// The local player component, if present.
-  AsobiPlayer? get localPlayer => _players[_myId];
+  PositionComponent? get localPlayer => _players[_myId];
 
   /// All player components by ID.
-  Map<String, AsobiPlayer> get players => Map.unmodifiable(_players);
+  Map<String, PositionComponent> get players => Map.unmodifiable(_players);
 
   /// Time remaining in milliseconds.
   double get timeRemainingMs =>
@@ -111,16 +120,7 @@ class AsobiNetworkSync extends Component {
         add(player);
       }
 
-      final player = _players[pid]!;
-      player.applyServerState(data, pixelsPerUnit);
-
-      if (player.isDead) {
-        player.color = const Color(0xFF888888);
-      } else if (isMe) {
-        player.color = const Color(0xFF00FFFF);
-      } else {
-        player.color = const Color(0xFFFF4444);
-      }
+      (_players[pid]! as AsobiPlayer).applyServerState(data, pixelsPerUnit);
     }
 
     for (final pid in _players.keys.toList()) {
@@ -144,12 +144,12 @@ class AsobiNetworkSync extends Component {
 
       if (!_projectiles.containsKey(id)) {
         final projectile = projectileBuilder?.call(id, owner, isLocal) ??
-            AsobiProjectile(projectileId: id, owner: owner, isLocal: isLocal);
+            _defaultProjectile(id, owner, isLocal);
         _projectiles[id] = projectile;
         add(projectile);
       }
 
-      _projectiles[id]!.applyServerState(data, pixelsPerUnit);
+      (_projectiles[id]! as AsobiProjectile).applyServerState(data, pixelsPerUnit);
     }
 
     for (final id in _projectiles.keys.toList()) {
@@ -160,11 +160,25 @@ class AsobiNetworkSync extends Component {
     }
   }
 
-  AsobiPlayer _defaultPlayer(String pid, bool isMe) {
-    return AsobiPlayer(
-      playerId: pid,
-      isLocal: isMe,
-      size: Vector2.all(0.64),
-    );
+  PositionComponent _defaultPlayer(String pid, bool isMe) {
+    return _DefaultPlayer(size: Vector2.all(0.64))
+      ..initPlayer(id: pid, local: isMe);
   }
+
+  PositionComponent _defaultProjectile(int id, String owner, bool isLocal) {
+    return _DefaultProjectile(radius: 0.15)
+      ..initProjectile(id: id, ownerId: owner, local: isLocal);
+  }
+}
+
+/// Minimal default player — a simple circle. Override via [playerBuilder].
+class _DefaultPlayer extends CircleComponent with AsobiPlayer {
+  _DefaultPlayer({required Vector2 size})
+      : super(radius: size.x / 2, anchor: Anchor.center, priority: 5);
+}
+
+/// Minimal default projectile — a small circle. Override via [projectileBuilder].
+class _DefaultProjectile extends CircleComponent with AsobiProjectile {
+  _DefaultProjectile({required double radius})
+      : super(radius: radius, anchor: Anchor.center, priority: 3);
 }

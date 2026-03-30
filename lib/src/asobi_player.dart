@@ -1,38 +1,32 @@
-import 'dart:ui';
 import 'package:flame/components.dart';
-import 'package:flutter/painting.dart' show TextPainter, TextSpan, TextStyle, TextDirection;
 
-/// A networked player component with position interpolation.
+/// A mixin for networked player components with position interpolation.
 ///
-/// Updates position smoothly via [applyServerState] which lerps
-/// from the current position to the server-provided target.
-class AsobiPlayer extends PositionComponent {
-  final String playerId;
-  final bool isLocal;
-  final double lerpSpeed;
+/// Apply to any [PositionComponent] to add multiplayer state synchronization.
+/// The component's position is smoothly interpolated towards the server target.
+///
+/// ```dart
+/// class MyPlayer extends SpriteComponent with AsobiPlayer {
+///   MyPlayer({required super.playerId});
+/// }
+/// ```
+mixin AsobiPlayer on PositionComponent {
+  late final String playerId;
+  bool isLocal = false;
+  double lerpSpeed = 0.3;
 
-  Color color;
-  int hp;
-  int kills;
-  int deaths;
-  String label;
+  int hp = 100;
+  int kills = 0;
+  int deaths = 0;
+  String label = '';
 
   Vector2 _targetPosition = Vector2.zero();
 
-  AsobiPlayer({
-    required this.playerId,
-    this.isLocal = false,
-    this.lerpSpeed = 0.3,
-    this.color = const Color(0xFFFF4444),
-    this.hp = 100,
-    this.kills = 0,
-    this.deaths = 0,
-    String? label,
-    super.position,
-    super.size,
-    super.anchor = Anchor.center,
-    super.priority = 5,
-  }) : label = label ?? (isLocal ? 'YOU' : playerId.substring(0, 8)) {
+  void initPlayer({required String id, bool local = false, double lerp = 0.3, String? playerLabel}) {
+    playerId = id;
+    isLocal = local;
+    lerpSpeed = lerp;
+    label = playerLabel ?? (local ? 'YOU' : id.substring(0, (id.length < 8) ? id.length : 8));
     _targetPosition = position.clone();
   }
 
@@ -53,35 +47,5 @@ class AsobiPlayer extends PositionComponent {
   void update(double dt) {
     super.update(dt);
     position.lerp(_targetPosition, lerpSpeed);
-  }
-
-  @override
-  void render(Canvas canvas) {
-    // Body circle
-    final bodyPaint = Paint()..color = color;
-    canvas.drawCircle(
-      Offset(size.x / 2, size.y / 2),
-      size.x / 2,
-      bodyPaint,
-    );
-
-    // HP bar background
-    final hpBgPaint = Paint()..color = const Color(0xFF000000);
-    canvas.drawRect(Rect.fromLTWH(0, size.y + 0.05, size.x, 0.08), hpBgPaint);
-
-    // HP bar
-    final hpPaint = Paint()..color = const Color(0xFF00FF00);
-    final hpWidth = size.x * (hp / 100).clamp(0.0, 1.0);
-    canvas.drawRect(Rect.fromLTWH(0, size.y + 0.05, hpWidth, 0.08), hpPaint);
-
-    // Label
-    final tp = TextPainter(
-      text: TextSpan(
-        text: label,
-        style: TextStyle(fontSize: 1.4, color: const Color(0xFFFFFFFF)),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    tp.paint(canvas, Offset((size.x - tp.width) / 2, -1.6));
   }
 }
