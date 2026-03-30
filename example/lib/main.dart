@@ -12,6 +12,34 @@ void main() {
   runApp(GameWidget(game: ArenaGame()));
 }
 
+/// Custom player with sprite-friendly rendering.
+class ArenaPlayer extends CircleComponent with AsobiPlayer {
+  ArenaPlayer({required Vector2 size})
+      : super(radius: size.x / 2, anchor: Anchor.center, priority: 5);
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    paint.color = isDead
+        ? const Color(0xFF888888)
+        : isLocal
+            ? const Color(0xFF00FFFF)
+            : const Color(0xFFFF4444);
+  }
+}
+
+/// Custom projectile.
+class ArenaBullet extends CircleComponent with AsobiProjectile {
+  ArenaBullet()
+      : super(radius: 0.15, anchor: Anchor.center, priority: 3);
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    paint.color = isLocal ? const Color(0xFFFFFF00) : const Color(0xFFFFFFFF);
+  }
+}
+
 class ArenaGame extends FlameGame
     with HasAsobi, KeyboardEvents, MouseMovementDetector, TapCallbacks {
   late final AsobiInputSender _input;
@@ -19,39 +47,34 @@ class ArenaGame extends FlameGame
 
   @override
   Future<void> onLoad() async {
-    // 1. Connect to backend
     await asobiConnect('localhost', port: 8084);
     await asobi.auth.register('player_${DateTime.now().millisecond}', 'pass');
     await asobi.realtime.connect();
 
-    // 2. Find a match
     asobi.realtime.onMatchmakerMatched.stream.listen((_) => _startGame());
     await asobi.realtime.addToMatchmaker(mode: 'arena');
   }
 
   void _startGame() {
-    // 3. Add network sync — handles all entity lifecycle
     _sync = AsobiNetworkSync(
       client: asobi,
       pixelsPerUnit: 50,
-      onStateUpdate: (_) {
-        // Access local player stats via _sync.localPlayer
-      },
+      playerBuilder: (id, isLocal) =>
+          ArenaPlayer(size: Vector2.all(0.64))..initPlayer(id: id, local: isLocal),
+      projectileBuilder: (id, owner, isLocal) =>
+          ArenaBullet()..initProjectile(id: id, ownerId: owner, local: isLocal),
       onMatchFinished: (result) {
         // Handle game over
       },
     );
     world.add(_sync);
 
-    // 4. Add input sender — captures WASD + mouse
     _input = AsobiInputSender(client: asobi, pixelsPerUnit: 50);
     world.add(_input);
 
-    // 5. Setup camera
-    camera.viewfinder.position = Vector2(8, 6); // center of 800x600 / 50
+    camera.viewfinder.position = Vector2(8, 6);
     camera.viewfinder.zoom = size.y / 13;
 
-    // 6. Arena bounds
     world.add(RectangleComponent(
       size: Vector2(16, 12),
       paint: Paint()

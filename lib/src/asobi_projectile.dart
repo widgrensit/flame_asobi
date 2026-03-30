@@ -1,25 +1,24 @@
-import 'dart:ui';
 import 'package:flame/components.dart';
 
-/// A networked projectile component.
+/// A mixin for networked projectile components.
 ///
-/// Position is set directly from server state (no interpolation —
-/// projectiles move fast enough that lerping looks worse).
-class AsobiProjectile extends CircleComponent {
-  final int projectileId;
-  final String owner;
-  final bool isLocal;
+/// Apply to any [PositionComponent] to add server state synchronization.
+/// Position is set directly (no interpolation — projectiles move too fast).
+///
+/// ```dart
+/// class MyBullet extends CircleComponent with AsobiProjectile {
+///   MyBullet({required super.radius});
+/// }
+/// ```
+mixin AsobiProjectile on PositionComponent {
+  late final int projectileId;
+  late final String owner;
+  bool isLocal = false;
 
-  AsobiProjectile({
-    required this.projectileId,
-    required this.owner,
-    this.isLocal = false,
-    super.position,
-    double radius = 0.15,
-    super.anchor = Anchor.center,
-    super.priority = 3,
-  }) : super(radius: radius) {
-    paint = Paint()..color = isLocal ? const Color(0xFFFFFF00) : const Color(0xFFFFFFFF);
+  void initProjectile({required int id, required String ownerId, bool local = false}) {
+    projectileId = id;
+    owner = ownerId;
+    isLocal = local;
   }
 
   /// Apply position from server state.
