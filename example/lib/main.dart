@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart' show KeyEventResult;
 import 'package:flame_asobi/flame_asobi.dart';
 
-/// Minimal multiplayer arena game using flame_asobi.
+/// Minimal multiplayer arena game using flame_asobi mixins.
 void main() {
   runApp(GameWidget(game: ArenaGame()));
 }
@@ -41,21 +41,38 @@ class ArenaBullet extends CircleComponent with AsobiProjectile {
 }
 
 class ArenaGame extends FlameGame
-    with HasAsobi, KeyboardEvents, MouseMovementDetector, TapCallbacks {
-  late final AsobiInputSender _input;
+    with
+        HasAsobi,
+        HasAsobiMatchmaker,
+        HasAsobiInput,
+        KeyboardEvents,
+        KeyboardHandler,
+        MouseMovementDetector,
+        TapCallbacks {
   late final AsobiNetworkSync _sync;
+
+  @override
+  AsobiClient get inputClient => asobi;
+
+  @override
+  AsobiClient get matchmakerClient => asobi;
+
+  @override
+  String get matchmakerMode => 'arena';
+
+  @override
+  double get inputPixelsPerUnit => 50;
 
   @override
   Future<void> onLoad() async {
     await asobiConnect('localhost', port: 8084);
     await asobi.auth.register('player_${DateTime.now().millisecond}', 'pass');
-    await asobi.realtime.connect();
-
-    asobi.realtime.onMatchmakerMatched.stream.listen((_) => _startGame());
-    await asobi.realtime.addToMatchmaker(mode: 'arena');
+    await connectMatchmaker();
+    findMatch();
   }
 
-  void _startGame() {
+  @override
+  void onMatchmakerMatched(Map<String, dynamic> payload) {
     _sync = AsobiNetworkSync(
       client: asobi,
       pixelsPerUnit: 50,
@@ -68,9 +85,6 @@ class ArenaGame extends FlameGame
       },
     );
     world.add(_sync);
-
-    _input = AsobiInputSender(client: asobi, pixelsPerUnit: 50);
-    world.add(_input);
 
     camera.viewfinder.position = Vector2(8, 6);
     camera.viewfinder.zoom = size.y / 13;
@@ -86,21 +100,21 @@ class ArenaGame extends FlameGame
 
   @override
   KeyEventResult onKeyEvent(KeyEvent event, Set<LogicalKeyboardKey> keysPressed) {
-    _input.onKeyEvent(event, keysPressed);
+    super.onKeyEvent(event, keysPressed);
     return KeyEventResult.handled;
   }
 
   @override
   void onMouseMove(PointerHoverInfo info) {
-    _input.updateMousePosition(camera.viewfinder.globalToLocal(info.eventPosition.global));
+    updateMousePosition(camera.viewfinder.globalToLocal(info.eventPosition.global));
   }
 
   @override
   void onTapDown(TapDownEvent event) {
-    _input.setMouseDown(true);
-    _input.updateMousePosition(camera.viewfinder.globalToLocal(event.canvasPosition));
+    setMouseDown(true);
+    updateMousePosition(camera.viewfinder.globalToLocal(event.canvasPosition));
   }
 
   @override
-  void onTapUp(TapUpEvent event) => _input.setMouseDown(false);
+  void onTapUp(TapUpEvent event) => setMouseDown(false);
 }

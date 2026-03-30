@@ -1,44 +1,36 @@
 import 'package:asobi/asobi.dart';
 import 'package:flame/components.dart';
 import 'package:flame/events.dart';
-import 'package:flame/game.dart';
 import 'package:flutter/services.dart';
 
-/// Component that captures keyboard and mouse input and sends it
+/// Mixin that captures keyboard and mouse input and sends it
 /// to the Asobi backend as match input.
 ///
-/// Attach to a [FlameGame] that uses [KeyboardEvents] and [TapCallbacks].
+/// Apply to any [Component] that uses [KeyboardHandler].
 ///
 /// ```dart
-/// add(AsobiInputSender(
-///   client: asobi,
-///   pixelsPerUnit: 50,
-/// ));
+/// class MyGame extends FlameGame with HasAsobi, HasAsobiInput, KeyboardEvents {
+///   @override
+///   AsobiClient get inputClient => asobi;
+/// }
 /// ```
-class AsobiInputSender extends Component with KeyboardHandler {
-  final AsobiClient client;
-  final double pixelsPerUnit;
+mixin HasAsobiInput on Component, KeyboardHandler {
+  /// The Asobi client to send input through.
+  AsobiClient get inputClient;
+
+  /// Pixels per world unit for coordinate conversion.
+  double get inputPixelsPerUnit => 50;
 
   final Set<LogicalKeyboardKey> _keysPressed = {};
   Vector2 _mouseWorld = Vector2.zero();
   bool _mouseDown = false;
 
   /// Keys mapped to movement directions. Override to customize.
-  LogicalKeyboardKey keyUp;
-  LogicalKeyboardKey keyDown;
-  LogicalKeyboardKey keyLeft;
-  LogicalKeyboardKey keyRight;
-  LogicalKeyboardKey keyShoot;
-
-  AsobiInputSender({
-    required this.client,
-    this.pixelsPerUnit = 50,
-    this.keyUp = LogicalKeyboardKey.keyW,
-    this.keyDown = LogicalKeyboardKey.keyS,
-    this.keyLeft = LogicalKeyboardKey.keyA,
-    this.keyRight = LogicalKeyboardKey.keyD,
-    this.keyShoot = LogicalKeyboardKey.space,
-  });
+  LogicalKeyboardKey get keyUp => LogicalKeyboardKey.keyW;
+  LogicalKeyboardKey get keyDown => LogicalKeyboardKey.keyS;
+  LogicalKeyboardKey get keyLeft => LogicalKeyboardKey.keyA;
+  LogicalKeyboardKey get keyRight => LogicalKeyboardKey.keyD;
+  LogicalKeyboardKey get keyShoot => LogicalKeyboardKey.space;
 
   @override
   bool onKeyEvent(KeyEvent event, Set<LogicalKeyboardKey> keysPressed) {
@@ -69,14 +61,14 @@ class AsobiInputSender extends Component with KeyboardHandler {
 
     if (!(up || down || left || right || shoot)) return;
 
-    client.realtime.sendMatchInput({
+    inputClient.realtime.sendMatchInput({
       'up': up,
       'down': down,
       'left': left,
       'right': right,
       'shoot': shoot,
-      'aim_x': _mouseWorld.x * pixelsPerUnit,
-      'aim_y': _mouseWorld.y * pixelsPerUnit,
+      'aim_x': _mouseWorld.x * inputPixelsPerUnit,
+      'aim_y': _mouseWorld.y * inputPixelsPerUnit,
     });
   }
 }
