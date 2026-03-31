@@ -3,12 +3,12 @@ description: Example multiplayer arena game using flame_asobi.
 publish_to: none
 
 environment:
-  sdk: ">=3.4.0 <4.0.0"
-  flutter: ">=3.22.0"
+  sdk: ">=3.11.0 <4.0.0"
+  flutter: ">=3.41.0"
 
 dependencies:
   flutter:
     sdk: flutter
-  flame: ">=1.18.0 <2.0.0"
+  flame: ^1.36.0
   flame_asobi:
     path: ../

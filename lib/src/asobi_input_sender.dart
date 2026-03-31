@@ -1,50 +1,37 @@
 import 'package:asobi/asobi.dart';
 import 'package:flame/components.dart';
-import 'package:flame/events.dart';
 import 'package:flutter/services.dart';
 
-/// Mixin that captures keyboard and mouse input and sends it
-/// to the Asobi backend as match input.
-///
-/// Apply to any [Component] that uses [KeyboardHandler].
-///
-/// ```dart
-/// class MyGame extends FlameGame with HasAsobi, HasAsobiInput, KeyboardEvents {
-///   @override
-///   AsobiClient get inputClient => asobi;
-/// }
-/// ```
-mixin HasAsobiInput on Component, KeyboardHandler {
-  /// The Asobi client to send input through.
+mixin HasAsobiInput on Component {
   AsobiClient get inputClient;
 
-  /// Pixels per world unit for coordinate conversion.
   double get inputPixelsPerUnit => 50;
+
+  /// Minimum interval between input sends in seconds.
+  /// Default 0.1 (10Hz) to match typical server tick rate.
+  double get inputSendInterval => 0.1;
 
   final Set<LogicalKeyboardKey> _keysPressed = {};
   Vector2 _mouseWorld = Vector2.zero();
   bool _mouseDown = false;
+  double _inputAccumulator = 0;
 
-  /// Keys mapped to movement directions. Override to customize.
   LogicalKeyboardKey get keyUp => LogicalKeyboardKey.keyW;
   LogicalKeyboardKey get keyDown => LogicalKeyboardKey.keyS;
   LogicalKeyboardKey get keyLeft => LogicalKeyboardKey.keyA;
   LogicalKeyboardKey get keyRight => LogicalKeyboardKey.keyD;
   LogicalKeyboardKey get keyShoot => LogicalKeyboardKey.space;
 
-  @override
-  bool onKeyEvent(KeyEvent event, Set<LogicalKeyboardKey> keysPressed) {
+  /// Call from your game's key event handler to track pressed keys.
+  void handleKeyEvent(KeyEvent event, Set<LogicalKeyboardKey> keysPressed) {
     _keysPressed.clear();
     _keysPressed.addAll(keysPressed);
-    return false;
   }
 
-  /// Call from the game's mouse/tap handlers to update aim position.
   void updateMousePosition(Vector2 worldPosition) {
     _mouseWorld = worldPosition;
   }
 
-  /// Call from the game's tap handlers.
   void setMouseDown(bool down) {
     _mouseDown = down;
   }
@@ -52,6 +39,10 @@ mixin HasAsobiInput on Component, KeyboardHandler {
   @override
   void update(double dt) {
     super.update(dt);
+
+    _inputAccumulator += dt;
+    if (_inputAccumulator < inputSendInterval) return;
+    _inputAccumulator = 0;
 
     final up = _keysPressed.contains(keyUp);
     final down = _keysPressed.contains(keyDown);
@@ -61,14 +52,14 @@ mixin HasAsobiInput on Component, KeyboardHandler {
 
     if (!(up || down || left || right || shoot)) return;
 
-    inputClient.realtime.sendMatchInput({
-      'up': up,
-      'down': down,
-      'left': left,
-      'right': right,
-      'shoot': shoot,
-      'aim_x': _mouseWorld.x * inputPixelsPerUnit,
-      'aim_y': _mouseWorld.y * inputPixelsPerUnit,
-    });
+    inputClient.realtime.sendMatchInput(MatchInput(
+      up: up,
+      down: down,
+      left: left,
+      right: right,
+      shoot: shoot,
+      aimX: _mouseWorld.x * inputPixelsPerUnit,
+      aimY: _mouseWorld.y * inputPixelsPerUnit,
+    ));
   }
 }

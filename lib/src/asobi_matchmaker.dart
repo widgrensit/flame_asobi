@@ -2,96 +2,68 @@ import 'dart:async';
 import 'package:asobi/asobi.dart';
 import 'package:flame/components.dart';
 
-/// Mixin that manages matchmaking lifecycle on any [Component].
-///
-/// ```dart
-/// class MyGame extends FlameGame with HasAsobi, HasAsobiMatchmaker {
-///   @override
-///   AsobiClient get matchmakerClient => asobi;
-///
-///   @override
-///   String get matchmakerMode => 'arena';
-///
-///   @override
-///   void onMatchmakerConnected() => print('ready');
-///
-///   @override
-///   void onMatchmakerMatched(Map<String, dynamic> payload) => startGame();
-/// }
-/// ```
 mixin HasAsobiMatchmaker on Component {
-  /// The Asobi client used for matchmaking.
   AsobiClient get matchmakerClient;
 
-  /// Game mode to search for.
   String get matchmakerMode => 'default';
 
-  bool _mmConnected = false;
-  bool _mmSearching = false;
-  double _mmSearchTime = 0;
+  bool _connected = false;
+  bool _searching = false;
+  double _searchTime = 0;
 
-  StreamSubscription? _mmConnectedSub;
-  StreamSubscription? _mmMatchedSub;
-  StreamSubscription? _mmErrorSub;
+  StreamSubscription<void>? _connectedSub;
+  StreamSubscription<MatchmakerMatch>? _matchedSub;
+  StreamSubscription<RealtimeError>? _errorSub;
 
-  /// Whether the WebSocket is connected and ready.
-  bool get isConnected => _mmConnected;
+  bool get isConnected => _connected;
 
-  /// Whether currently searching for a match.
-  bool get isSearching => _mmSearching;
+  bool get isSearching => _searching;
 
-  /// Seconds spent searching.
-  double get searchTime => _mmSearchTime;
+  double get searchTime => _searchTime;
 
-  /// Called when WebSocket connects.
   void onMatchmakerConnected() {}
 
-  /// Called when a match is found.
-  void onMatchmakerMatched(Map<String, dynamic> payload) {}
+  void onMatchmakerMatched(MatchmakerMatch match) {}
 
-  /// Called on matchmaker error.
-  void onMatchmakerError(Map<String, dynamic> error) {}
+  void onMatchmakerError(RealtimeError error) {}
 
-  /// Connect to the server WebSocket and start listening.
   Future<void> connectMatchmaker() async {
-    _mmConnectedSub = matchmakerClient.realtime.onConnected.stream.listen((_) {
-      _mmConnected = true;
+    _connectedSub = matchmakerClient.realtime.onConnected.stream.listen((_) {
+      _connected = true;
       onMatchmakerConnected();
     });
-    _mmMatchedSub = matchmakerClient.realtime.onMatchmakerMatched.stream.listen((payload) {
-      _mmSearching = false;
-      onMatchmakerMatched(payload);
+    _matchedSub = matchmakerClient.realtime.onMatchmakerMatched.stream.listen((match) {
+      _searching = false;
+      onMatchmakerMatched(match);
     });
-    _mmErrorSub = matchmakerClient.realtime.onError.stream.listen((err) {
-      _mmSearching = false;
-      onMatchmakerError(err);
+    _errorSub = matchmakerClient.realtime.onError.stream.listen((error) {
+      _searching = false;
+      onMatchmakerError(error);
     });
     await matchmakerClient.realtime.connect();
   }
 
-  /// Start searching for a match.
   void findMatch() {
-    _mmSearching = true;
-    _mmSearchTime = 0;
+    _searching = true;
+    _searchTime = 0;
     matchmakerClient.realtime.addToMatchmaker(mode: matchmakerMode);
   }
 
-  /// Cancel the current search.
   void cancelSearch() {
-    _mmSearching = false;
+    _searching = false;
   }
 
   @override
   void update(double dt) {
     super.update(dt);
-    if (_mmSearching) _mmSearchTime += dt;
+    if (_searching) _searchTime += dt;
   }
 
   @override
   void onRemove() {
-    _mmConnectedSub?.cancel();
-    _mmMatchedSub?.cancel();
-    _mmErrorSub?.cancel();
+    _connectedSub?.cancel();
+    _matchedSub?.cancel();
+    _errorSub?.cancel();
     super.onRemove();
   }
 }
