@@ -7,12 +7,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart' show KeyEventResult;
 import 'package:flame_asobi/flame_asobi.dart';
 
-/// Minimal multiplayer arena game using flame_asobi mixins.
 void main() {
   runApp(GameWidget(game: ArenaGame()));
 }
 
-/// Custom player with sprite-friendly rendering.
 class ArenaPlayer extends CircleComponent with AsobiPlayer {
   ArenaPlayer({required Vector2 size})
       : super(radius: size.x / 2, anchor: Anchor.center, priority: 5);
@@ -28,7 +26,6 @@ class ArenaPlayer extends CircleComponent with AsobiPlayer {
   }
 }
 
-/// Custom projectile.
 class ArenaBullet extends CircleComponent with AsobiProjectile {
   ArenaBullet()
       : super(radius: 0.15, anchor: Anchor.center, priority: 3);
@@ -46,7 +43,6 @@ class ArenaGame extends FlameGame
         HasAsobiMatchmaker,
         HasAsobiInput,
         KeyboardEvents,
-        KeyboardHandler,
         MouseMovementDetector,
         TapCallbacks {
   late final AsobiNetworkSync _sync;
@@ -72,14 +68,14 @@ class ArenaGame extends FlameGame
   }
 
   @override
-  void onMatchmakerMatched(Map<String, dynamic> payload) {
+  void onMatchmakerMatched(MatchmakerMatch match) {
     _sync = AsobiNetworkSync(
       client: asobi,
       pixelsPerUnit: 50,
-      playerBuilder: (id, isLocal) =>
-          ArenaPlayer(size: Vector2.all(0.64))..initPlayer(id: id, local: isLocal),
-      projectileBuilder: (id, owner, isLocal) =>
-          ArenaBullet()..initProjectile(id: id, ownerId: owner, local: isLocal),
+      playerBuilder: (playerId, isLocal) =>
+          ArenaPlayer(size: Vector2.all(0.64)),
+      projectileBuilder: (projectileId, owner, isLocal) =>
+          ArenaBullet(),
       onMatchFinished: (result) {
         // Handle game over
       },
@@ -100,7 +96,7 @@ class ArenaGame extends FlameGame
 
   @override
   KeyEventResult onKeyEvent(KeyEvent event, Set<LogicalKeyboardKey> keysPressed) {
-    super.onKeyEvent(event, keysPressed);
+    handleKeyEvent(event, keysPressed);
     return KeyEventResult.handled;
   }
 

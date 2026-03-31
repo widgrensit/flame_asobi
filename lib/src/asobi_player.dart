@@ -1,15 +1,6 @@
+import 'package:asobi/asobi.dart';
 import 'package:flame/components.dart';
 
-/// A mixin for networked player components with position interpolation.
-///
-/// Apply to any [PositionComponent] to add multiplayer state synchronization.
-/// The component's position is smoothly interpolated towards the server target.
-///
-/// ```dart
-/// class MyPlayer extends SpriteComponent with AsobiPlayer {
-///   MyPlayer({required super.playerId});
-/// }
-/// ```
 mixin AsobiPlayer on PositionComponent {
   late final String playerId;
   bool isLocal = false;
@@ -30,15 +21,14 @@ mixin AsobiPlayer on PositionComponent {
     _targetPosition = position.clone();
   }
 
-  /// Apply state received from the server. Position is interpolated.
-  void applyServerState(Map<String, dynamic> state, double pixelsPerUnit) {
+  void applyServerState(PlayerState state, double pixelsPerUnit) {
     _targetPosition = Vector2(
-      (state['x'] as num).toDouble() / pixelsPerUnit,
-      (state['y'] as num).toDouble() / pixelsPerUnit,
+      state.x / pixelsPerUnit,
+      state.y / pixelsPerUnit,
     );
-    hp = (state['hp'] as num?)?.toInt() ?? 0;
-    kills = (state['kills'] as num?)?.toInt() ?? 0;
-    deaths = (state['deaths'] as num?)?.toInt() ?? 0;
+    hp = state.hp;
+    kills = state.kills;
+    deaths = state.deaths;
   }
 
   bool get isDead => hp <= 0;
