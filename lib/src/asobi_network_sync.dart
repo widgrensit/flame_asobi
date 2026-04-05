@@ -1,20 +1,39 @@
 import 'dart:async';
 import 'package:asobi/asobi.dart';
 import 'package:flame/components.dart';
+import 'package:flame_asobi/src/asobi_player.dart';
+import 'package:flame_asobi/src/asobi_projectile.dart';
 
-import 'asobi_player.dart';
-import 'asobi_projectile.dart';
+/// Factory for creating player components.
+typedef PlayerBuilder =
+    PositionComponent Function(String playerId, {required bool isLocal});
 
-typedef PlayerBuilder = PositionComponent Function(String playerId, bool isLocal);
+/// Factory for creating projectile components.
+typedef ProjectileBuilder =
+    PositionComponent Function(int id, String owner, {required bool isLocal});
 
-typedef ProjectileBuilder = PositionComponent Function(int id, String owner, bool isLocal);
-
+/// Synchronises server match state with local Flame components.
+///
+/// Listens to [AsobiClient.realtime] for [MatchState] updates and
+/// automatically spawns, updates, and removes player and projectile
+/// entities to match the server state.
 class AsobiNetworkSync extends Component {
+  /// The client providing the realtime match stream.
   final AsobiClient client;
+
+  /// Conversion factor from server pixel coordinates to world units.
   final double pixelsPerUnit;
+
+  /// Factory used to create player components.
   final PlayerBuilder playerBuilder;
+
+  /// Factory used to create projectile components.
   final ProjectileBuilder projectileBuilder;
+
+  /// Optional callback invoked on every state update.
   final void Function(MatchState state)? onStateUpdate;
+
+  /// Optional callback invoked when the match finishes.
   final void Function(MatchResult result)? onMatchFinished;
 
   final Map<String, PositionComponent> _players = {};
@@ -25,6 +44,7 @@ class AsobiNetworkSync extends Component {
   StreamSubscription<MatchState>? _stateSub;
   StreamSubscription<MatchResult>? _finishSub;
 
+  /// Creates a network sync component.
   AsobiNetworkSync({
     required this.client,
     required this.playerBuilder,
@@ -58,19 +78,25 @@ class AsobiNetworkSync extends Component {
   void update(double dt) {
     super.update(dt);
     final state = _latestState;
-    if (state == null) return;
+    if (state == null) {
+      return;
+    }
 
     _syncPlayers(state);
     _syncProjectiles(state);
     onStateUpdate?.call(state);
   }
 
+  /// The most recently received match state, or `null` if none yet.
   MatchState? get latestState => _latestState;
 
+  /// The local player's component, or `null` if not yet spawned.
   PositionComponent? get localPlayer => _players[_myId];
 
+  /// An unmodifiable view of all current player components keyed by ID.
   Map<String, PositionComponent> get players => Map.unmodifiable(_players);
 
+  /// Remaining match time in milliseconds from the latest state.
   double get timeRemainingMs => _latestState?.timeRemaining ?? 0;
 
   void _syncPlayers(MatchState state) {
@@ -83,13 +109,16 @@ class AsobiNetworkSync extends Component {
       seenIds.add(playerId);
 
       if (!_players.containsKey(playerId)) {
-        final player = playerBuilder(playerId, isMe);
+        final player = playerBuilder(playerId, isLocal: isMe);
         (player as AsobiPlayer).initPlayer(id: playerId, local: isMe);
         _players[playerId] = player;
         add(player);
       }
 
-      (_players[playerId]! as AsobiPlayer).applyServerState(playerState, pixelsPerUnit);
+      (_players[playerId]! as AsobiPlayer).applyServerState(
+        playerState,
+        pixelsPerUnit,
+      );
     }
 
     for (final playerId in _players.keys.toList()) {
@@ -110,13 +139,24 @@ class AsobiNetworkSync extends Component {
       seenIds.add(projectileId);
 
       if (!_projectiles.containsKey(projectileId)) {
-        final projectile = projectileBuilder(projectileId, ownerId, isLocal);
-        (projectile as AsobiProjectile).initProjectile(id: projectileId, ownerId: ownerId, local: isLocal);
+        final projectile = projectileBuilder(
+          projectileId,
+          ownerId,
+          isLocal: isLocal,
+        );
+        (projectile as AsobiProjectile).initProjectile(
+          id: projectileId,
+          ownerId: ownerId,
+          local: isLocal,
+        );
         _projectiles[projectileId] = projectile;
         add(projectile);
       }
 
-      (_projectiles[projectileId]! as AsobiProjectile).applyServerState(projectileState, pixelsPerUnit);
+      (_projectiles[projectileId]! as AsobiProjectile).applyServerState(
+        projectileState,
+        pixelsPerUnit,
+      );
     }
 
     for (final projectileId in _projectiles.keys.toList()) {

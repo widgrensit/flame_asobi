@@ -2,6 +2,7 @@ name: flame_asobi
 version: 0.1.0
 description: Asobi multiplayer game backend integration for Flame. Provides components and mixins for real-time multiplayer, matchmaking, and leaderboards.
 homepage: https://github.com/widgrensit/flame_asobi
+repository: https://github.com/widgrensit/flame_asobi
 topics:
   - flame
   - multiplayer
@@ -22,4 +23,5 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flame_test: ^1.16.0
+  flame_lint: ^1.1.0
   mocktail: ^1.0.0
