@@ -13,7 +13,7 @@ void main() {
 
 class ArenaPlayer extends CircleComponent with AsobiPlayer {
   ArenaPlayer({required Vector2 size})
-      : super(radius: size.x / 2, anchor: Anchor.center, priority: 5);
+    : super(radius: size.x / 2, anchor: Anchor.center, priority: 5);
 
   @override
   void update(double dt) {
@@ -21,14 +21,13 @@ class ArenaPlayer extends CircleComponent with AsobiPlayer {
     paint.color = isDead
         ? const Color(0xFF888888)
         : isLocal
-            ? const Color(0xFF00FFFF)
-            : const Color(0xFFFF4444);
+        ? const Color(0xFF00FFFF)
+        : const Color(0xFFFF4444);
   }
 }
 
 class ArenaBullet extends CircleComponent with AsobiProjectile {
-  ArenaBullet()
-      : super(radius: 0.15, anchor: Anchor.center, priority: 3);
+  ArenaBullet() : super(radius: 0.15, anchor: Anchor.center, priority: 3);
 
   @override
   void update(double dt) {
@@ -72,9 +71,9 @@ class ArenaGame extends FlameGame
     _sync = AsobiNetworkSync(
       client: asobi,
       pixelsPerUnit: 50,
-      playerBuilder: (playerId, isLocal) =>
+      playerBuilder: (playerId, {required isLocal}) =>
           ArenaPlayer(size: Vector2.all(0.64)),
-      projectileBuilder: (projectileId, owner, isLocal) =>
+      projectileBuilder: (projectileId, owner, {required isLocal}) =>
           ArenaBullet(),
       onMatchFinished: (result) {
         // Handle game over
@@ -85,32 +84,39 @@ class ArenaGame extends FlameGame
     camera.viewfinder.position = Vector2(8, 6);
     camera.viewfinder.zoom = size.y / 13;
 
-    world.add(RectangleComponent(
-      size: Vector2(16, 12),
-      paint: Paint()
-        ..color = const Color(0xFFFFFFFF)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 0.04,
-    ));
+    world.add(
+      RectangleComponent(
+        size: Vector2(16, 12),
+        paint: Paint()
+          ..color = const Color(0xFFFFFFFF)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.04,
+      ),
+    );
   }
 
   @override
-  KeyEventResult onKeyEvent(KeyEvent event, Set<LogicalKeyboardKey> keysPressed) {
+  KeyEventResult onKeyEvent(
+    KeyEvent event,
+    Set<LogicalKeyboardKey> keysPressed,
+  ) {
     handleKeyEvent(event, keysPressed);
     return KeyEventResult.handled;
   }
 
   @override
   void onMouseMove(PointerHoverInfo info) {
-    updateMousePosition(camera.viewfinder.globalToLocal(info.eventPosition.global));
+    updateMousePosition(
+      camera.viewfinder.globalToLocal(info.eventPosition.global),
+    );
   }
 
   @override
   void onTapDown(TapDownEvent event) {
-    setMouseDown(true);
+    setMouseDown(down: true);
     updateMousePosition(camera.viewfinder.globalToLocal(event.canvasPosition));
   }
 
   @override
-  void onTapUp(TapUpEvent event) => setMouseDown(false);
+  void onTapUp(TapUpEvent event) => setMouseDown(down: false);
 }

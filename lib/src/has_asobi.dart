@@ -11,7 +11,11 @@ mixin HasAsobi on FlameGame {
   late final AsobiClient asobi;
 
   /// Initialize and connect to the Asobi backend.
-  Future<void> asobiConnect(String host, {int port = 8080, bool useSsl = false}) async {
+  Future<void> asobiConnect(
+    String host, {
+    int port = 8080,
+    bool useSsl = false,
+  }) async {
     asobi = AsobiClient(host, port: port, useSsl: useSsl);
   }
 

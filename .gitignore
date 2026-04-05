@@ -3,3 +3,11 @@ build/
 pubspec.lock
 .packages
 .DS_Store
+pubspec_overrides.yaml
+*.iml
+.idea/
+.vscode/
+coverage/
+doc/api/
+.flutter-plugins
+.flutter-plugins-dependencies
