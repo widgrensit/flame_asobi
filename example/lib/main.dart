@@ -53,14 +53,14 @@ class ArenaGame extends FlameGame
   AsobiClient get matchmakerClient => asobi;
 
   @override
-  String get matchmakerMode => 'arena';
+  String get matchmakerMode => 'demo';
 
   @override
   double get inputPixelsPerUnit => 50;
 
   @override
   Future<void> onLoad() async {
-    await asobiConnect('localhost', port: 8085);
+    await asobiConnect('localhost', port: 8084);
     await asobi.auth.register('player_${DateTime.now().millisecond}', 'pass');
     await connectMatchmaker();
     findMatch();
