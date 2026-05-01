@@ -60,7 +60,7 @@ class ArenaGame extends FlameGame
 
   @override
   Future<void> onLoad() async {
-    await asobiConnect('localhost', port: 8084);
+    await asobiConnect('localhost', port: 8085);
     await asobi.auth.register('player_${DateTime.now().millisecond}', 'pass');
     await connectMatchmaker();
     findMatch();

@@ -1,8 +1,19 @@
 # flame_asobi
 
-Flame bridge package for the [Asobi](https://pub.dev/packages/asobi) multiplayer game backend. Provides Flame-native components and mixins for real-time multiplayer, matchmaking, and leaderboards.
+Flame bridge for the [Asobi](https://github.com/widgrensit/asobi) game backend. Adds Flame-native mixins for matchmaking, input capture, and server-state sync on top of the [asobi](https://pub.dev/packages/asobi) Dart SDK.
 
-Instead of manually managing WebSocket state, entity tracking, and input serialization, `flame_asobi` gives you drop-in components that handle it all.
+You write plain Flame components; `flame_asobi` mixes in the multiplayer wiring.
+
+## Run a backend first
+
+The current Flame mixins target the *arena* match shape (WASD + aim + shoot input, players + projectiles state). The fastest way to get a compatible backend is the reference arena Lua server:
+
+```bash
+git clone https://github.com/widgrensit/asobi_arena_lua
+cd asobi_arena_lua && docker compose up -d
+```
+
+That serves at `http://localhost:8085`. For just the SDK plumbing (auth + matchmake + state — no combat) you can also point at [`sdk_demo_backend`](https://github.com/widgrensit/sdk_demo_backend) on `:8084`, but the arena-shaped `MatchInput` won't be meaningful there.
 
 ## Installation
 
@@ -13,208 +24,191 @@ flutter pub add flame_asobi
 ## Quick Start
 
 ```dart
+import 'package:flame/components.dart';
+import 'package:flame/events.dart';
 import 'package:flame/game.dart';
 import 'package:flame_asobi/flame_asobi.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart' show KeyEventResult;
 
-class MyGame extends FlameGame with HasAsobi, KeyboardEvents {
+class ArenaPlayer extends CircleComponent with AsobiPlayer {
+  ArenaPlayer() : super(radius: 0.32, anchor: Anchor.center);
+}
+
+class ArenaBullet extends CircleComponent with AsobiProjectile {
+  ArenaBullet() : super(radius: 0.15, anchor: Anchor.center);
+}
+
+class MyGame extends FlameGame
+    with HasAsobi, HasAsobiMatchmaker, HasAsobiInput, KeyboardEvents, TapCallbacks {
+  @override
+  AsobiClient get inputClient => asobi;
+  @override
+  AsobiClient get matchmakerClient => asobi;
+  @override
+  String get matchmakerMode => 'arena';
+
   @override
   Future<void> onLoad() async {
-    await asobiConnect('localhost', port: 8080);
-    await asobi.auth.login('player1', 'secret');
-    await asobi.realtime.connect();
+    await asobiConnect('localhost', port: 8085);
+    await asobi.auth.register('player_${DateTime.now().millisecond}', 'pass');
+    await connectMatchmaker();
+    findMatch();
+  }
 
-    // Automatically syncs server state → Flame components
+  @override
+  void onMatchmakerMatched(MatchmakerMatch match) {
     world.add(AsobiNetworkSync(
       client: asobi,
       pixelsPerUnit: 50,
-      onMatchFinished: (result) => print('Game over!'),
+      playerBuilder: (id, {required isLocal}) => ArenaPlayer(),
+      projectileBuilder: (id, owner, {required isLocal}) => ArenaBullet(),
     ));
+  }
 
-    // Captures WASD + mouse and sends to server
-    world.add(AsobiInputSender(client: asobi, pixelsPerUnit: 50));
+  @override
+  KeyEventResult onKeyEvent(KeyEvent event, Set<LogicalKeyboardKey> keysPressed) {
+    handleKeyEvent(event, keysPressed);
+    return KeyEventResult.handled;
   }
 }
 ```
 
-## Components
+See [`example/lib/main.dart`](example/lib/main.dart) for the full version with mouse aim and a camera.
 
-### `HasAsobi` mixin
+## Mixins
 
-Adds an `AsobiClient` to your `FlameGame` with lifecycle management.
+### `HasAsobi` — client lifecycle
+
+Adds an `AsobiClient` to your `FlameGame`. Disposed automatically when the game is removed.
 
 ```dart
 class MyGame extends FlameGame with HasAsobi {
   @override
   Future<void> onLoad() async {
-    await asobiConnect('my-server.com', port: 8080, useSsl: true);
-    // asobi.auth, asobi.realtime, asobi.leaderboards, etc.
+    await asobiConnect('my-server.com', port: 8085, useSsl: true);
+    // asobi.auth, asobi.realtime, asobi.leaderboards, asobi.matchmaker, ...
   }
 }
 ```
 
-The client is automatically disposed when the game is removed.
+### `HasAsobiMatchmaker` — matchmaking lifecycle
 
-### `AsobiNetworkSync`
+Mix into a `Component` (typically your `FlameGame`) for matchmaking with callbacks.
 
-The core component. Listens to `match.state` events from the server and automatically creates, updates, and removes `AsobiPlayer` and `AsobiProjectile` children.
+```dart
+class MyGame extends FlameGame with HasAsobi, HasAsobiMatchmaker {
+  @override
+  AsobiClient get matchmakerClient => asobi;
+  @override
+  String get matchmakerMode => 'arena';
+
+  @override
+  void onMatchmakerConnected() => findMatch();
+
+  @override
+  void onMatchmakerMatched(MatchmakerMatch match) {
+    // start the round
+  }
+}
+```
+
+`isConnected`, `isSearching`, `searchTime` are available as state, plus `cancelSearch()`.
+
+### `HasAsobiInput` — keyboard + mouse capture
+
+Captures WASD + mouse and ticks `match.input` to the server at 10 Hz (override `inputSendInterval`).
+
+```dart
+class MyGame extends FlameGame
+    with HasAsobi, HasAsobiInput, KeyboardEvents, MouseMovementDetector, TapCallbacks {
+  @override
+  AsobiClient get inputClient => asobi;
+  @override
+  double get inputPixelsPerUnit => 50;
+
+  @override
+  KeyEventResult onKeyEvent(KeyEvent e, Set<LogicalKeyboardKey> keys) {
+    handleKeyEvent(e, keys);
+    return KeyEventResult.handled;
+  }
+
+  @override
+  void onMouseMove(PointerHoverInfo info) =>
+      updateMousePosition(camera.viewfinder.globalToLocal(info.eventPosition.global));
+
+  @override
+  void onTapDown(TapDownEvent e) => setMouseDown(down: true);
+  @override
+  void onTapUp(TapUpEvent e) => setMouseDown(down: false);
+}
+```
+
+Override `keyUp`/`keyDown`/`keyLeft`/`keyRight`/`keyShoot` to remap.
+
+### `AsobiNetworkSync` — server state → entities
+
+Listens to `match.state` and creates / updates / removes child components per the server's authoritative entity list. You provide builders for your component types.
 
 ```dart
 world.add(AsobiNetworkSync(
   client: asobi,
   pixelsPerUnit: 50,
+  playerBuilder: (playerId, {required isLocal}) => ArenaPlayer(),
+  projectileBuilder: (id, owner, {required isLocal}) => ArenaBullet(),
   onStateUpdate: (state) {
-    // Update HUD with timer, kills, HP
-    final player = sync.localPlayer;
-    timerText.text = formatTime(sync.timeRemainingMs);
-    killsText.text = 'Kills: ${player?.kills ?? 0}';
+    // update HUD
   },
   onMatchFinished: (result) {
-    // Navigate to results screen
+    // navigate to results
   },
 ));
 ```
 
-**Custom entity rendering:**
+### `AsobiPlayer` mixin
+
+Adds networked position interpolation + match-state fields (`hp`, `kills`, `deaths`, `isLocal`, `isDead`) to any `PositionComponent`.
 
 ```dart
-world.add(AsobiNetworkSync(
-  client: asobi,
-  pixelsPerUnit: 50,
-  playerBuilder: (playerId, isLocal) => MyCustomPlayer(
-    playerId: playerId,
-    isLocal: isLocal,
-    sprite: myPlayerSprite,
-  ),
-  projectileBuilder: (id, owner, isLocal) => MyCustomBullet(
-    projectileId: id,
-    owner: owner,
-    isLocal: isLocal,
-  ),
-));
-```
+class ArenaPlayer extends CircleComponent with AsobiPlayer {
+  ArenaPlayer() : super(radius: 0.32, anchor: Anchor.center);
 
-### `AsobiPlayer`
-
-A networked player component with automatic position interpolation and built-in rendering (circle body, HP bar, name label).
-
-```dart
-final player = AsobiPlayer(
-  playerId: 'abc123',
-  isLocal: true,
-  size: Vector2.all(0.64),
-  lerpSpeed: 0.3,  // interpolation smoothing
-);
-```
-
-Properties updated from server state:
-- `position` — interpolated toward server position
-- `hp`, `kills`, `deaths` — from match state
-- `color` — cyan (local), red (enemy), grey (dead)
-- `isDead` — true when hp <= 0
-
-### `AsobiProjectile`
-
-A networked projectile component. Position is set directly from server state (no interpolation — projectiles move fast enough).
-
-```dart
-final bullet = AsobiProjectile(
-  projectileId: 1,
-  owner: 'player-uuid',
-  isLocal: true,  // yellow for local, white for enemy
-  radius: 0.15,
-);
-```
-
-### `AsobiInputSender`
-
-Captures keyboard and mouse input and sends it to the server as match input every frame.
-
-```dart
-world.add(AsobiInputSender(
-  client: asobi,
-  pixelsPerUnit: 50,
-  // Default keys (override to customize):
-  // keyUp: LogicalKeyboardKey.keyW,
-  // keyDown: LogicalKeyboardKey.keyS,
-  // keyLeft: LogicalKeyboardKey.keyA,
-  // keyRight: LogicalKeyboardKey.keyD,
-  // keyShoot: LogicalKeyboardKey.space,
-));
-```
-
-For mouse aiming and click-to-shoot, forward events from your game:
-
-```dart
-@override
-void onMouseMove(PointerHoverInfo info) {
-  inputSender.updateMousePosition(
-    camera.viewfinder.globalToLocal(info.eventPosition.global),
-  );
-}
-
-@override
-void onTapDown(TapDownEvent event) {
-  inputSender.setMouseDown(true);
-}
-
-@override
-void onTapUp(TapUpEvent event) {
-  inputSender.setMouseDown(false);
+  @override
+  void update(double dt) {
+    super.update(dt);
+    paint.color = isDead
+        ? const Color(0xFF888888)
+        : isLocal
+            ? const Color(0xFF00FFFF)
+            : const Color(0xFFFF4444);
+  }
 }
 ```
 
-### `AsobiMatchmaker`
+### `AsobiProjectile` mixin
 
-Manages the matchmaking lifecycle with callbacks.
+Adds networked position (no interpolation — projectiles move fast) + `owner` and `isLocal` flags.
 
 ```dart
-final matchmaker = AsobiMatchmaker(
-  client: asobi,
-  mode: 'arena',
-  onConnected: () => print('Ready to play'),
-  onMatched: (payload) => startGame(),
-  onError: (err) => showError(err),
-);
-
-world.add(matchmaker);
-await matchmaker.connect();
-matchmaker.findMatch();
-
-// Check status:
-print(matchmaker.isSearching);  // true
-print(matchmaker.searchTime);   // seconds elapsed
+class ArenaBullet extends CircleComponent with AsobiProjectile {
+  ArenaBullet() : super(radius: 0.15, anchor: Anchor.center);
+}
 ```
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│              FlameGame                  │
-│                                         │
-│  AsobiNetworkSync                       │
-│  ├── Listens to match.state (10Hz)      │
-│  ├── Creates/updates AsobiPlayer        │
-│  ├── Creates/updates AsobiProjectile    │
-│  └── Fires onStateUpdate / onFinished   │
-│                                         │
-│  AsobiInputSender                       │
-│  ├── Captures WASD + mouse each frame   │
-│  └── Sends match.input to server        │
-│                                         │
-│  AsobiMatchmaker                        │
-│  ├── Connects WebSocket                 │
-│  ├── Queues for matchmaking             │
-│  └── Fires onMatched callback           │
-│                                         │
-│  AsobiClient (from asobi package)       │
-│  ├── HTTP: auth, leaderboards, etc.     │
-│  └── WebSocket: realtime events         │
-└─────────────────────────────────────────┘
+FlameGame
+├── HasAsobi              — owns AsobiClient
+├── HasAsobiMatchmaker    — connect → match → callbacks
+├── HasAsobiInput         — WASD + mouse → match.input @ 10 Hz
+└── world
+    └── AsobiNetworkSync  — match.state → AsobiPlayer / AsobiProjectile children
 ```
 
-## Full Example
+## Full example
 
-See the [asobi-flame-demo](https://github.com/widgrensit/asobi-flame-demo) for a complete arena shooter using this package.
+See [`asobi-flame-demo`](https://github.com/widgrensit/asobi-flame-demo) for a complete arena shooter.
 
 ## License
 
