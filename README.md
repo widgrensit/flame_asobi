@@ -219,6 +219,10 @@ FlameGame
 
 See [`asobi-flame-demo`](https://github.com/widgrensit/asobi-flame-demo) for a complete arena shooter (boons, modifiers, voting) — uses `buildMatchInput` to emit the arena-shaped input.
 
+## Dispatch testing
+
+flame_asobi delegates all WebSocket dispatch to `package:asobi`. Protocol dispatch coverage lives there (see asobi-dart's `test/dispatch_test.dart`). flame_asobi's tests focus on the Flame component integration (`AsobiNetworkSync`, `AsobiPlayer`, `AsobiProjectile`, mixins) on top of those already-dispatched typed event streams.
+
 ## License
 
 Apache-2.0
