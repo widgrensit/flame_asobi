@@ -9,6 +9,12 @@
 // underlying AsobiClient still works through the bridge package is
 // enough to gate releases on the SDK contract.
 //
+// Runs under `flutter test` rather than plain `dart run` because
+// transitively importing `package:flame` pulls `dart:ui`, which the
+// standalone Dart VM does not expose. Functionally this is still a
+// console smoke — there is no widget tree, just one async test that
+// exits non-zero on any failure or timeout.
+//
 // Expects the backend running at ASOBI_URL (default localhost:8084).
 // See widgrensit/sdk_demo_backend/SMOKE.md for the canonical scenarios.
 
@@ -17,76 +23,79 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flame_asobi/flame_asobi.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 const _matchMode = 'demo';
 const _startupTimeout = Duration(seconds: 60);
 const _matchJoinTimeout = Duration(seconds: 10);
 const _stateTimeout = Duration(seconds: 3);
+const _overallTimeout = Timeout(Duration(seconds: 90));
 
-Future<void> main() async {
-  final url = _parseUrl(
-    Platform.environment['ASOBI_URL'] ?? 'http://localhost:8084',
-  );
-
-  _log('Waiting for backend at ${url['host']}:${url['port']}');
-  await _waitForServer(url);
-  _log('Backend reachable.');
-
-  final a = await _spawnPlayer('a', url);
-  final b = await _spawnPlayer('b', url);
-  _log('Registered: ${a.playerId} | ${b.playerId}');
-
-  // Attach match.matched listeners BEFORE queuing to avoid a race
-  // with the server pairing us immediately.
-  final matchedA = a.client.realtime.onMatchmakerMatched.stream.first
-      .timeout(_matchJoinTimeout);
-  final matchedB = b.client.realtime.onMatchmakerMatched.stream.first
-      .timeout(_matchJoinTimeout);
-
-  await a.client.realtime.addToMatchmaker(mode: _matchMode);
-  await b.client.realtime.addToMatchmaker(mode: _matchMode);
-  _log('Both queued.');
-
-  final matchA = await matchedA;
-  final matchB = await matchedB;
-  _log('Both matched, match_id = ${matchA.matchId}');
-
-  if (matchA.matchId != matchB.matchId) {
-    throw Exception(
-      'match_id mismatch: ${matchA.matchId} vs ${matchB.matchId}',
+void main() {
+  test('canonical flame_asobi smoke against sdk_demo_backend', () async {
+    final url = _parseUrl(
+      Platform.environment['ASOBI_URL'] ?? 'http://localhost:8084',
     );
-  }
 
-  // match.input -> match.state applied.
-  // Capture x_initial from the FIRST match.state for the local player,
-  // then assert a subsequent state shows x > x_initial + 10. Spawn x is
-  // random in [50, 700], so an `x >= 1` check would trivially pass.
-  double? xInitial;
-  final movedCompleter = Completer<PlayerState>();
-  final sub = a.client.realtime.onMatchState.stream.listen((state) {
-    final me = state.players[a.playerId];
-    if (me == null) {
-      return;
-    }
-    if (xInitial == null) {
-      xInitial = me.x + 0.0;
-      _log('x_initial = $xInitial');
-      a.client.realtime.sendMatchInput({'move_x': 1, 'move_y': 0});
-      return;
-    }
-    if (!movedCompleter.isCompleted && me.x > xInitial! + 10) {
-      movedCompleter.complete(me);
-    }
-  });
+    _log('Waiting for backend at ${url['host']}:${url['port']}');
+    await _waitForServer(url);
+    _log('Backend reachable.');
 
-  final me = await movedCompleter.future.timeout(_stateTimeout);
-  await sub.cancel();
-  _log('match.state confirmed: x = ${me.x} (was $xInitial)');
+    final a = await _spawnPlayer('a', url);
+    final b = await _spawnPlayer('b', url);
+    _log('Registered: ${a.playerId} | ${b.playerId}');
 
-  await a.client.realtime.disconnect();
-  await b.client.realtime.disconnect();
-  _log('PASS');
-  exit(0);
+    // Attach match.matched listeners BEFORE queuing to avoid a race
+    // with the server pairing us immediately.
+    final matchedA = a.client.realtime.onMatchmakerMatched.stream.first
+        .timeout(_matchJoinTimeout);
+    final matchedB = b.client.realtime.onMatchmakerMatched.stream.first
+        .timeout(_matchJoinTimeout);
+
+    await a.client.realtime.addToMatchmaker(mode: _matchMode);
+    await b.client.realtime.addToMatchmaker(mode: _matchMode);
+    _log('Both queued.');
+
+    final matchA = await matchedA;
+    final matchB = await matchedB;
+    _log('Both matched, match_id = ${matchA.matchId}');
+
+    expect(
+      matchA.matchId,
+      matchB.matchId,
+      reason: 'both clients must receive the same match_id',
+    );
+
+    // match.input -> match.state applied.
+    // Capture x_initial from the FIRST match.state for the local player,
+    // then assert a subsequent state shows x > x_initial + 10. Spawn x
+    // is random in [50, 700], so an `x >= 1` check would trivially pass.
+    double? xInitial;
+    final movedCompleter = Completer<PlayerState>();
+    final sub = a.client.realtime.onMatchState.stream.listen((state) {
+      final me = state.players[a.playerId];
+      if (me == null) {
+        return;
+      }
+      if (xInitial == null) {
+        xInitial = me.x + 0.0;
+        _log('x_initial = $xInitial');
+        a.client.realtime.sendMatchInput({'move_x': 1, 'move_y': 0});
+        return;
+      }
+      if (!movedCompleter.isCompleted && me.x > xInitial! + 10) {
+        movedCompleter.complete(me);
+      }
+    });
+
+    final me = await movedCompleter.future.timeout(_stateTimeout);
+    await sub.cancel();
+    _log('match.state confirmed: x = ${me.x} (was $xInitial)');
+
+    await a.client.realtime.disconnect();
+    await b.client.realtime.disconnect();
+    _log('PASS');
+  }, timeout: _overallTimeout);
 }
 
 // ---- helpers ----

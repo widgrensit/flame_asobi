@@ -29,12 +29,16 @@ jobs:
           channel: stable
 
       - name: Resolve dependencies
-        run: dart pub get
+        run: flutter pub get
 
       - name: Run smoke
         env:
           ASOBI_URL: http://localhost:8084
-        run: dart run smoke_tests/smoke.dart
+        # `flutter test` is required because flame_asobi transitively
+        # imports `package:flame`, which depends on `dart:ui`. The test
+        # itself is a single async test() and exits non-zero on any
+        # assertion or timeout, just like a console smoke would.
+        run: flutter test smoke_tests/smoke.dart --reporter expanded
 
       - name: Backend logs on failure
         if: failure()
