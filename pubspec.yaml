@@ -17,7 +17,14 @@ dependencies:
   flutter:
     sdk: flutter
   flame: ^1.36.0
-  asobi: ^0.1.0
+  # Pinned to git until asobi-dart publishes the post-PR-#14 release that
+  # drops the typed MatchInput in favour of `Map<String, dynamic>`. The
+  # smoke test depends on the new sendMatchInput signature; bump back to
+  # a pub.dev version (>= 0.2.0) once published.
+  asobi:
+    git:
+      url: https://github.com/widgrensit/asobi-dart
+      ref: main
 
 dev_dependencies:
   flutter_test:
