@@ -5,7 +5,12 @@ import 'package:flutter/services.dart';
 /// Mixin that captures keyboard and mouse input and sends it to the server.
 ///
 /// Mix into your `FlameGame` alongside `HasAsobi` to automatically
-/// send player input at a configurable tick rate.
+/// send `match.input` at a configurable tick rate.
+///
+/// The default payload shape matches `sdk_demo_backend`:
+/// `{move_x, move_y, shoot, aim_x, aim_y}`. Override [buildMatchInput]
+/// to emit a different shape (for example, the boolean flag shape used
+/// by `asobi_arena`).
 mixin HasAsobiInput on Component {
   /// The [AsobiClient] used to send input messages.
   AsobiClient get inputClient;
@@ -55,6 +60,34 @@ mixin HasAsobiInput on Component {
     _mouseDown = down;
   }
 
+  /// Builds the `match.input` payload sent to the server each tick.
+  /// Return `null` to skip a send (e.g. when no input is active).
+  ///
+  /// Default emits `{move_x, move_y, shoot, aim_x, aim_y}` matching
+  /// `sdk_demo_backend`. Override for game-specific shapes.
+  Map<String, dynamic>? buildMatchInput({
+    required Set<LogicalKeyboardKey> keysPressed,
+    required Vector2 mouseWorld,
+    required bool mouseDown,
+  }) {
+    final mx = (keysPressed.contains(keyRight) ? 1 : 0) -
+        (keysPressed.contains(keyLeft) ? 1 : 0);
+    final my = (keysPressed.contains(keyDown) ? 1 : 0) -
+        (keysPressed.contains(keyUp) ? 1 : 0);
+    final shoot = mouseDown || keysPressed.contains(keyShoot);
+
+    if (mx == 0 && my == 0 && !shoot) {
+      return null;
+    }
+    return {
+      'move_x': mx,
+      'move_y': my,
+      'shoot': shoot,
+      'aim_x': mouseWorld.x * inputPixelsPerUnit,
+      'aim_y': mouseWorld.y * inputPixelsPerUnit,
+    };
+  }
+
   @override
   void update(double dt) {
     super.update(dt);
@@ -65,26 +98,13 @@ mixin HasAsobiInput on Component {
     }
     _inputAccumulator = 0;
 
-    final up = _keysPressed.contains(keyUp);
-    final down = _keysPressed.contains(keyDown);
-    final left = _keysPressed.contains(keyLeft);
-    final right = _keysPressed.contains(keyRight);
-    final shoot = _mouseDown || _keysPressed.contains(keyShoot);
-
-    if (!(up || down || left || right || shoot)) {
-      return;
-    }
-
-    inputClient.realtime.sendMatchInput(
-      MatchInput(
-        up: up,
-        down: down,
-        left: left,
-        right: right,
-        shoot: shoot,
-        aimX: _mouseWorld.x * inputPixelsPerUnit,
-        aimY: _mouseWorld.y * inputPixelsPerUnit,
-      ),
+    final input = buildMatchInput(
+      keysPressed: _keysPressed,
+      mouseWorld: _mouseWorld,
+      mouseDown: _mouseDown,
     );
+    if (input != null) {
+      inputClient.realtime.sendMatchInput(input);
+    }
   }
 }
