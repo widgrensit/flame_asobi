@@ -1,0 +1,51 @@
+name: smoke
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout flame_asobi
+        uses: actions/checkout@v4
+
+      - name: Checkout sdk_demo_backend
+        uses: actions/checkout@v4
+        with:
+          repository: widgrensit/sdk_demo_backend
+          path: _backend
+
+      - name: Bring up sdk_demo_backend
+        working-directory: _backend
+        run: docker compose up -d
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Run smoke
+        env:
+          ASOBI_URL: http://localhost:8084
+        # `flutter test` is required because flame_asobi transitively
+        # imports `package:flame`, which depends on `dart:ui`. The test
+        # itself is a single async test() and exits non-zero on any
+        # assertion or timeout, just like a console smoke would.
+        run: flutter test smoke_tests/smoke.dart --reporter expanded
+
+      - name: Backend logs on failure
+        if: failure()
+        working-directory: _backend
+        run: docker compose logs asobi
+
+      - name: Tear down
+        if: always()
+        working-directory: _backend
+        run: docker compose down -v
